@@ -3,6 +3,9 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
 
+#ifndef POINTCONV_INTERPOLATE_H
+#define POINTCONV_INTERPOLATE_H
+
 #pragma once
 
 #include <torch/extension.h>
@@ -13,3 +16,5 @@ at::Tensor three_interpolate(at::Tensor points, at::Tensor idx,
                              at::Tensor weight);
 at::Tensor three_interpolate_grad(at::Tensor grad_out, at::Tensor idx,
                                   at::Tensor weight, const int m);
+
+#endif //POINTCONV_DETACH_H

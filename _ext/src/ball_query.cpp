@@ -10,6 +10,10 @@ void query_ball_point_kernel_wrapper(int b, int n, int m, float radius,
                                      int nsample, const float *new_xyz,
                                      const float *xyz, int *idx);
 
+void k_neighbor_query_kernel_wrapper(int b, int n, int m,
+                                     int nsample, const float *new_xyz,
+                                     const float *xyz, int *idx, float *tmp_v);
+
 /**
  * 
  * @param new_xyz (B, M, 3) selected grouping center
@@ -36,6 +40,41 @@ at::Tensor ball_query(at::Tensor new_xyz, at::Tensor xyz, const float radius,
     query_ball_point_kernel_wrapper(xyz.size(0), xyz.size(1), new_xyz.size(1),
                                     radius, nsample, new_xyz.data<float>(),
                                     xyz.data<float>(), idx.data<int>());
+  } else {
+    TORCH_CHECK(false, "CPU not supported");
+  }
+
+  return idx;
+}
+
+/**
+ *
+ * @param new_xyz (B, M, 3)
+ * @param xyz     (B, N, 3)
+ * @param nsample
+ * @return idx    (B, M, nsample)
+ */
+at::Tensor k_neighbor_query(at::Tensor new_xyz, at::Tensor xyz, const int nsample) {
+  CHECK_CONTIGUOUS(new_xyz);
+  CHECK_CONTIGUOUS(xyz);
+  CHECK_IS_FLOAT(new_xyz);
+  CHECK_IS_FLOAT(xyz);
+  
+  if (new_xyz.type().is_cuda()) {
+    CHECK_CUDA(xyz);
+  }
+  TORCH_CHECK(nsample>0, "nsample must greater than 0");
+
+  at::Tensor idx = torch::zeros({new_xyz.size(0), new_xyz.size(1), nsample},
+                   at::device(new_xyz.device()).dtype(at::ScalarType::Int));
+  
+  at::Tensor tmp_v = torch::zeros({new_xyz.size(0), new_xyz.size(1), nsample},
+                   at::device(new_xyz.device()).dtype(at::ScalarType::Float));
+  
+  if (new_xyz.type().is_cuda()) {
+    k_neighbor_query_kernel_wrapper(xyz.size(0), xyz.size(1), new_xyz.size(1),
+                                    nsample, new_xyz.data<float>(),
+                                    xyz.data<float>(), idx.data<int>(), tmp_v.data<float>());
   } else {
     TORCH_CHECK(false, "CPU not supported");
   }

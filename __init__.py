@@ -11,6 +11,7 @@ __all__ = [
     "three_interpolate",
     "grouping_operation",
     "ball_query",
+    "k_neighbor_query", 
     "QueryAndGroup",
     "GroupAll",
 ]

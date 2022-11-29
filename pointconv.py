@@ -80,18 +80,28 @@ class PointConv(nn.Module):
 
 
 class PConv(nn.Module):
-    def __init__(self, in_channel, out_channel, nsample, with_relu=True):
+    def __init__(self, in_channel, out_channel, 
+                nsample=9, with_relu=True):
         super().__init__()
+        self.nsample = nsample
         weight_mlp = [64, 64, 64]
-        self.grouper = QueryAndGroup(radius=0.4, nsample=nsample, ret_grouped_xyz=True)
         self.weight_net = WeightNet(weight_mlp)
         self.final = ConvBNRelu1D(in_channel * weight_mlp[-1], out_channels=out_channel, kernel_size=1)\
                     if with_relu else \
                     nn.Conv1d(in_channel * weight_mlp[-1], out_channels=out_channel, kernel_size=1)
-    def forward(self, xyz, feature):
+    def forward(self, xyz, feature, idx=None):
         B, _, N = feature.shape
         xyz_trans = xyz.permute(0, 2, 1).contiguous()
-        feature, grouped_xyz_trans = self.grouper(xyz, xyz, feature)  # [B, D, npoints, nsample] [B, 3, npoints, nsample]
+        if len(idx.shape)!=3:
+            idx = k_neighbor_query(xyz, xyz, self.nsample)
+        
+        grouped_xyz_trans = grouping_operation(
+            xyz_trans, idx
+        ) - xyz_trans.view(B, 3, N, 1) # [B, 3, N, nsample]
+        feature = grouping_operation(
+            feature, idx
+        ) # [B, D, N, nsample]
+
         weights = self.weight_net(grouped_xyz_trans) # [B, D1, nsample, N]
         feature = torch.matmul(
             feature.permute(0, 2, 1, 3),

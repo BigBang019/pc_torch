@@ -57,3 +57,104 @@ void query_ball_point_kernel_wrapper(int b, int n, int m, float radius,
 
   CUDA_CHECK_ERRORS();
 }
+
+__device__ void swap(const int idx1, const int idx2,
+                     float *__restrict__ tmp_v, int *__restrict__ tmp_i) {
+    float idx1_value = tmp_v[idx1];
+    int idx1_idx = tmp_i[idx1];
+    tmp_v[idx1] = tmp_v[idx2];
+    tmp_i[idx1] = tmp_i[idx2];
+    tmp_v[idx2] = idx1_value;
+    tmp_i[idx2] = idx1_idx;
+}
+
+__device__ void up(int cnt, float *__restrict__ tmp_v, int *__restrict__ tmp_i) {
+    while (cnt) {
+        if (tmp_v[cnt] > tmp_v[cnt >> 1]) {
+            swap(cnt, cnt >> 1, tmp_v, tmp_i);
+        } else {
+            break;
+        }
+        cnt = cnt >> 1;
+    }
+}
+
+__device__ void down(int cnt, const int heap_size, float *__restrict__ tmp_v, int *__restrict__ tmp_i) {
+    while ((cnt << 1) < heap_size) {
+        int left = cnt << 1, right = cnt << 1 | 1;
+        int target = (right >= heap_size || tmp_v[left] > tmp_v[right]) ? left : right;
+
+        if (tmp_v[cnt] <= tmp_v[target]) {
+            swap(cnt, target, tmp_v, tmp_i);
+        } else {
+            break;
+        }
+        cnt = target;
+    }
+}
+
+__device__ bool heap_insert(const float value, const int idx,
+                            const int cnt, const int max_heap_size,
+                            float *__restrict__ tmp_v,
+                            int *__restrict__ tmp_i) {
+    if (cnt < max_heap_size) { // not full
+        tmp_v[cnt] = value;
+        tmp_i[cnt] = idx;
+        up(cnt, tmp_v, tmp_i);
+        return true;
+    }
+    if (value >= *tmp_v) { // abandon if larger
+        return false;
+    }
+    swap(0, cnt - 1, tmp_v, tmp_i); // delete heap top element
+    down(0, cnt - 1, tmp_v, tmp_i); // down new top element
+    tmp_v[cnt - 1] = value; // insert new element
+    tmp_i[cnt - 1] = idx;
+    up(cnt - 1, tmp_v, tmp_i);
+    return false;
+}
+
+// input: new_xyz(b, m, 3) xyz(b, n, 3)
+// intermediate: tmp_v(b, m, nsample) tmp_i(b, m, nsample)
+// output: idx(b, m, nsample)
+__global__ void k_neighbor_query_kernel(int b, int n, int m, int nsample,
+                                        const float *__restrict__ new_xyz,
+                                        const float *__restrict__ xyz,
+                                        int *__restrict__ idx,
+                                        float *__restrict__ tmp_v){
+  int batch_index = blockIdx.x;
+  xyz += batch_index * n * 3;
+  new_xyz += batch_index * m * 3;
+  idx += m * nsample * batch_index;
+  tmp_v += m * nsample * batch_index;
+
+  int index = threadIdx.x;
+  int stride = blockDim.x;
+
+  for (int j = index; j < m; j += stride) {
+    float new_x = new_xyz[j * 3 + 0];
+    float new_y = new_xyz[j * 3 + 1];
+    float new_z = new_xyz[j * 3 + 2];
+
+    // current heap top index = tmp_v + j * nsample
+    // current heap top index = tmp_i + j * nsample
+    for (int k = 0, cnt = 0; k < n; ++k) {
+      float x = xyz[k * 3 + 0];
+      float y = xyz[k * 3 + 1];
+      float z = xyz[k * 3 + 2];
+      float dist = (new_x - x) * (new_x - x) + (new_y - y) * (new_y - y) + (new_z - z) * (new_z - z);
+      cnt += heap_insert(dist, k,
+                  cnt, nsample,
+                  tmp_v + j * nsample, idx + j * nsample);
+    }
+  }
+}
+
+void k_neighbor_query_kernel_wrapper(int b, int n, int m,
+                                     int nsample, const float *new_xyz,
+                                     const float *xyz, int *idx, float *tmp_v) {
+  cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+  k_neighbor_query_kernel<<<b, opt_n_threads(m), 0, stream>>>(
+      b, n, m, nsample, new_xyz, xyz, idx, tmp_v);
+  CUDA_CHECK_ERRORS();
+}

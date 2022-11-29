@@ -11,6 +11,7 @@ from __future__ import (
     print_function,
     unicode_literals,
 )
+from turtle import forward
 import torch
 from torch.autograd import Function
 import torch.nn as nn
@@ -290,9 +291,41 @@ class BallQuery(Function):
     def backward(ctx, a=None):
         return None, None, None, None
 
-
 ball_query = BallQuery.apply
 
+class KNeighborQuery(Function):
+    @staticmethod
+    def forward(ctx, new_xyz, xyz, nsample):
+        """
+        new_xyz:
+            (B, N, 3)
+        """
+        idxs = _ext.k_neighbor_query(new_xyz, xyz, nsample)
+        ctx.mark_non_differentiable(idxs)
+        return idxs
+    
+    @staticmethod
+    def backward(ctx, a=None):
+        return None, None, None
+
+k_neighbor_query = KNeighborQuery.apply
+
+
+class RandomCrop(Function):
+    @staticmethod
+    def forward(ctx, xyz, ratio):
+        """
+        new_xyz:
+            (B, N, 3)
+        """
+        idxs = _ext.random_crop(xyz, ratio)
+        ctx.mark_non_differentiable(idxs)
+
+    @staticmethod
+    def backward(ctx, a=None):
+        return None, None
+
+random_crop = RandomCrop.apply
 
 class QueryAndGroup(nn.Module):
     r"""
@@ -308,7 +341,7 @@ class QueryAndGroup(nn.Module):
 
     def __init__(self, radius, nsample, ret_grouped_xyz=False, normalize_xyz=False, sample_uniformly=False, ret_unique_cnt=False):
         super(QueryAndGroup, self).__init__()
-        self.radius, self.nsample, self.use_xyz = radius, nsample
+        self.radius, self.nsample = radius, nsample
         self.ret_grouped_xyz = ret_grouped_xyz
         self.normalize_xyz = normalize_xyz
         self.sample_uniformly = sample_uniformly
@@ -333,7 +366,7 @@ class QueryAndGroup(nn.Module):
         new_features : torch.Tensor
             (B, 3 + C, npoint, nsample) tensor
         """
-        idx = ball_query(self.radius, self.nsample, xyz, new_xyz)
+        idx = k_neighbor_query(new_xyz, xyz, self.nsample)
 
         if self.sample_uniformly:
             unique_cnt = torch.zeros((idx.shape[0], idx.shape[1]))
