@@ -130,16 +130,16 @@ class ThreeNN(Function):
         Parameters
         ----------
         unknown : torch.Tensor
-            (B, n, 3) tensor of known features
+            (B, N, 3) tensor of known features
         known : torch.Tensor
-            (B, m, 3) tensor of unknown features
+            (B, npoints, 3) tensor of unknown features
 
         Returns
         -------
         dist : torch.Tensor
-            (B, n, 3) l2 distance to the three nearest neighbors
+            (B, N, 3) l2 distance to the three nearest neighbors
         idx : torch.Tensor
-            (B, n, 3) index of 3 nearest neighbors
+            (B, N, 3) index of 3 nearest neighbors
         """
         dist2, idx = _ext.three_nn(unknown, known)
 
@@ -310,20 +310,38 @@ class KNeighborQuery(Function):
 
 k_neighbor_query = KNeighborQuery.apply
 
+class GraphNeighborQuery(Function):
+    @staticmethod
+    def forward(ctx, xyz, faces, nsample):
+        """
+            xyz: (B, N, 3)
+            faces: (B, M, 3)
+        """
+        idxs = _ext.graph_neighbor_query(xyz, faces, nsample)
+        ctx.mark_non_differentiable(idxs)
+        return idxs
+    
+    @staticmethod
+    def backward(ctx, a=None):
+        return None, None, None
+
+graph_neighbor_query = GraphNeighborQuery.apply
 
 class RandomCrop(Function):
     @staticmethod
-    def forward(ctx, xyz, ratio):
+    def forward(ctx, xyz, faces, ratio):
         """
         new_xyz:
             (B, N, 3)
         """
-        idxs = _ext.random_crop(xyz, ratio)
-        ctx.mark_non_differentiable(idxs)
+        cropped_xyz, cropped_faces = _ext.random_crop(xyz, faces, ratio)
+        ctx.mark_non_differentiable(cropped_xyz)
+        ctx.mark_non_differentiable(cropped_faces)
+        return cropped_xyz, cropped_faces
 
     @staticmethod
     def backward(ctx, a=None):
-        return None, None
+        return None, None, None
 
 random_crop = RandomCrop.apply
 

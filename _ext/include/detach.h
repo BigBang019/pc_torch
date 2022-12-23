@@ -7,7 +7,8 @@
 
 #pragma once
 #include <torch/extension.h>
+#include <vector>
 
-at::Tensor random_crop(at::Tensor xyz, const float ratio);
+std::vector<at::Tensor> random_crop(at::Tensor, at::Tensor, const float);
 
 #endif //POINTCONV_DETACH_H

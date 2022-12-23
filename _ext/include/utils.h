@@ -10,6 +10,7 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <torch/extension.h>
 #include <iostream>
+#include <vector>
 
 #define CHECK_CUDA(x)                                          \
   do {                                                         \
@@ -44,4 +45,21 @@ void logger(std::string vars, Args&&... values) {
 }
 //#define DEBUG(x) do { std::cout << #x << "=" << x; } while (0)
 
+//////////////////////////////////////////////////////////////////
+////////////                polygon to graph                /////////////
+//////////////////////////////////////////////////////////////////
+
+std::vector<at::Tensor> build_graph_from_triangle(at::Tensor xyz, at::Tensor polygons);
+
+at::Tensor merge_idx(at::Tensor to, at::Tensor from);
+
 #endif
+
+#ifndef defer
+struct defer_dummy {};
+template <class F> struct deferrer { F f; ~deferrer() { f(); } };
+template <class F> deferrer<F> operator*(defer_dummy, F f) { return {f}; }
+#define DEFER_(LINE) zz_defer##LINE
+#define DEFER(LINE) DEFER_(LINE)
+#define defer auto DEFER(__LINE__) = defer_dummy{} *[&]()
+#endif // defer
